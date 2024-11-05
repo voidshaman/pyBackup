@@ -1,17 +1,20 @@
 # PyBackup
 
-A simple yet powerful automated backup solution for Windows, featuring scheduled backups, recursive/non-recursive folder handling, and backup retention management.
+A robust automated backup solution for Windows featuring differential backups, compression, and smart backup management. Perfect for both personal and professional use.
 
 ## Features
 
-- 🔄 Automated scheduled backups (Daily, Weekly, Monthly, or On Boot)
+- 🔄 Smart differential backups (only backs up changed files)
+- 📊 Progress tracking with detailed status bars
+- 🔒 File integrity verification
+- 🗂️ Multiple backup types (Full and Differential)
 - 📁 Support for multiple backup sources
 - 🌲 Recursive and non-recursive folder backups
-- 🗜️ ZIP compression
-- ⏱️ Backup retention management
-- 📝 Detailed logging
+- 🗜️ ZIP compression with corruption protection
+- ⏱️ Intelligent backup retention management
+- 📝 Comprehensive logging system
 - ⚙️ Simple configuration file
-- 💻 Command-line access from anywhere
+- 💻 Command-line interface
 
 ## Quick Installation
 
@@ -25,46 +28,34 @@ Set-ExecutionPolicy Bypass -Scope Process -Force; [System.Net.ServicePointManage
 - Windows OS
 - Python 3.6 or higher
 - Administrator privileges (for installation)
-
-The installer will automatically handle all Python package dependencies.
+- Required packages (automatically installed):
+  - tqdm (for progress bars)
+  - configparser (for configuration management)
 
 ## Usage
 
-After installation, you can run backups in three ways:
+PyBackup offers three main operations:
 
-1. **Command Line**: 
-- Creating a backup NOW
+1. **Creating Backups**:
    ```bash
    pybackup backup
    ```
-- Listing backups
+
+2. **Listing Available Backups**:
    ```bash
    pybackup list
    ```
-- Restoring a backup
+
+3. **Restoring Backups**:
    ```bash
-   pybackup restore
+   pybackup restore [--backup-name BACKUP_NAME] [--folders FOLDER1 FOLDER2 ...]
    ```
-
-
-2. **Scheduled Task**: Runs automatically according to your chosen schedule
-
-3. **Manual Execution**: Run `backup_service.py` directly from the installation directory
-
-Note: After installation, you might need to restart your terminal or refresh environment variables to use the `pybackup` command:
-```powershell
-# PowerShell with Chocolatey
-refreshenv
-
-# or PowerShell manual refresh
-$env:Path = [System.Environment]::GetEnvironmentVariable("Path","Machine") + ";" + [System.Environment]::GetEnvironmentVariable("Path","User")
-```
 
 ## Configuration
 
-After installation, a configuration file (`conf.cfg`) will be created in the installation directory. You can customize the following settings:
+The configuration file (`conf.cfg`) supports the following settings:
 
-### Backup Destination
+### Paths Configuration
 ```ini
 [Paths]
 backup_destination = D:/Backup    # Where your backups will be stored
@@ -73,90 +64,98 @@ backup_destination = D:/Backup    # Where your backups will be stored
 ### Backup Settings
 ```ini
 [Backup]
-format = zip                      # Backup format. "zip" or "folder"
-max_backups = 5                   # Maximum number of backup versions to keep
-session_format = zip              # Format for individual backup sessions
+type = differential               # 'full' or 'differential'
+full_backup_interval = 7         # Days between full backups
+max_backups = 5                  # Maximum number of backups to retain
+format = zip                     # Backup format (currently only zip supported)
 ```
 
 ### Folder Configuration
 ```ini
 [Folders]
-folders = path/to/folder1, R; path/to/folder2, NR; path/to/folder3, R
+folders = D:/Documents, R; C:/Projects, NR; D:/Photos, R
 ```
 
-#### Folder Configuration Format:
-- Each folder entry consists of a path and a recursive flag
-- Entries are separated by semicolons (`;`)
-- For each entry:
-  - `R` = Recursive backup (includes subfolders)
-  - `NR` = Non-recursive backup (only top-level files)
-- Example: `D:/Documents, R; C:/ImportantFiles, NR`
+#### Folder Format Explanation:
+- Paths and flags are separated by commas
+- Multiple entries are separated by semicolons
+- Flags:
+  - `R`: Recursive (includes subfolders)
+  - `NR`: Non-recursive (only top-level files)
 
-## Backup Process
+## Backup Types
 
-1. The script creates a timestamped backup session
-2. Each configured folder is processed according to its recursive setting
-3. Files are compressed into a ZIP archive
-4. Old backups are automatically removed based on `max_backups` setting
-5. A detailed log is maintained in the backup destination folder
+PyBackup supports two backup types:
 
-## Log File
+1. **Full Backup**:
+   - Complete backup of all specified folders
+   - Creates a baseline for differential backups
+   - Automatically performed when:
+     - No previous backups exist
+     - Last full backup is older than `full_backup_interval`
 
-A log file (`backup_log.txt`) is created in your backup destination folder, containing:
-- Timestamp for each operation
-- Folders processed
-- Files added
-- Any errors encountered
+2. **Differential Backup**:
+   - Only backs up files that have changed since last full backup
+   - Much faster and space-efficient
+   - Automatically skipped if no changes detected
 
-## Schedule Options
+## Restore Options
 
-During installation, you can choose from these scheduling options:
-1. Weekly (Runs every Monday at 00:00)
-2. Daily (Runs every day at 00:00)
-3. Monthly (Runs on the 1st of each month at 00:00)
-4. On Boot (Runs when the system starts)
+The restore command supports:
 
-## Installation Directory Structure
+- Full system restore
+- Selective folder restore
+- Backup selection by name or interactive choice
+- Safe restore with confirmation prompts
+- Corruption detection and handling
 
-After installation, you'll find these files in `C:/pyBackup`:
+## Directory Structure
+
+Post-installation structure:
 ```
 C:/pyBackup/
 ├── backup_service.py    # Main backup script
-├── pybackup.bat        # Command-line launcher
+├── pybackup.bat        # Command-line interface
 └── conf/
     └── conf.cfg        # Configuration file
 ```
 
+## Logging
+
+The system maintains a detailed log file (`backup_log.txt`) in your backup destination, tracking:
+- Backup operations and their types
+- File processing status
+- Error reports and warnings
+- Successful completions
+
 ## Troubleshooting
 
-1. **Installation Fails**: 
-   - Ensure you're running PowerShell as Administrator
-   - Check your internet connection
-   - Verify Python is installed and in PATH
+1. **Permission Issues**:
+   - Run the backup command with administrator privileges
+   - Check folder permissions in backup destination
 
-2. **Backup Fails**:
-   - Check the log file for specific errors
-   - Ensure all configured paths exist
-   - Verify write permissions in the backup destination
+2. **Backup Verification Failures**:
+   - Check available disk space
+   - Verify source files are not in use
+   - Review log file for specific errors
 
-3. **Schedule Issues**:
-   - Open Task Scheduler to check the task status
-   - Ensure the computer is on at scheduled times
-   - Verify the Python path hasn't changed
+3. **Restore Problems**:
+   - Ensure you have write permissions to restore locations
+   - Verify the backup chain is complete (for differential restores)
+   - Check if source paths still exist
 
-4. **Command Not Found**:
-   - Restart your terminal after installation
-   - Try refreshing environment variables (see Usage section)
-   - Verify installation directory is in PATH
+## Best Practices
 
-## Support
+1. **Backup Strategy**:
+   - Keep full_backup_interval reasonable (7-30 days)
+   - Store backups on a different drive than source
+   - Regularly verify backup integrity
 
-If you encounter any issues or need assistance:
-1. Check the log file for error details
-2. Verify your configuration file settings
-3. Create an issue on the GitHub repository
+2. **Performance**:
+   - Use differential backups for frequent backups
+   - Adjust max_backups based on available storage
+   - Consider non-recursive backups for large folders
 
 ## License
 
 This project is licensed under the MIT License - see the LICENSE file for details.
-
