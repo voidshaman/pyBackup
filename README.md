@@ -17,7 +17,7 @@ A simple yet powerful automated backup solution for Windows, featuring scheduled
 
 Run this command in PowerShell (Administrator):
 ```powershell
-Set-ExecutionPolicy Bypass -Scope Process -Force; [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.ServicePointManager]::SecurityProtocol -bor 3072; iex ((New-Object System.Net.WebClient).DownloadString('https://raw.githubusercontent.com/voidshaman/pyBackup/refs/heads/main/install.py')) | python
+Set-ExecutionPolicy Bypass -Scope Process -Force; [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.ServicePointManager]::SecurityProtocol -bor 3072; Invoke-WebRequest 'https://raw.githubusercontent.com/voidshaman/pyBackup/refs/heads/main/install.py' -OutFile "$env:TEMP\install.py"; python "$env:TEMP\install.py"
 ```
 
 ## Requirements
