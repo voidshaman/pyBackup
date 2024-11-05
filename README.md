@@ -32,10 +32,20 @@ The installer will automatically handle all Python package dependencies.
 
 After installation, you can run backups in three ways:
 
-1. **Command Line**: Open any terminal and type:
+1. **Command Line**: 
+- Creating a backup NOW
    ```bash
-   pybackup
+   pybackup backup
    ```
+- Listing backups
+   ```bash
+   pybackup list
+   ```
+- Restoring a backup
+   ```bash
+   pybackup restore
+   ```
+
 
 2. **Scheduled Task**: Runs automatically according to your chosen schedule
 
