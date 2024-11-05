@@ -181,9 +181,12 @@ def set_env_variable():
 def download_sample_config():
     """Download sample config with error handling"""
     try:
+        # Make sure the conf directory exists
+        os.makedirs(CONF_DIR, exist_ok=True)
         download_file(CONFIG_FILE_URL, CONFIG_FILE_PATH)
     except Exception as e:
         raise RuntimeError(f"Failed to download sample config: {str(e)}")
+
 
 def open_config_file():
     """Open config file with error handling"""

@@ -63,7 +63,7 @@ backup_destination = D:/Backup    # Where your backups will be stored
 ### Backup Settings
 ```ini
 [Backup]
-format = zip                      # Backup format (currently only zip is supported)
+format = zip                      # Backup format. "zip" or "folder"
 max_backups = 5                   # Maximum number of backup versions to keep
 session_format = zip              # Format for individual backup sessions
 ```
