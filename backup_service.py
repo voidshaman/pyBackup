@@ -7,6 +7,11 @@ import tempfile
 from datetime import datetime
 import argparse
 import json
+from tqdm import tqdm
+import hashlib
+import json
+from pathlib import Path
+import time
 
 print("Script starting...")
 print(f"Current working directory: {os.getcwd()}")
@@ -53,6 +58,9 @@ try:
     
     session_format = config.get("Backup", "session_format", fallback="zip").lower()
     print(f"Session format: {session_format}")
+
+    backup_type = config.get("Backup", "type", fallback="full").lower()  # 'full' or 'differential'
+    full_backup_interval = int(config.get("Backup", "full_backup_interval", fallback="7"))  # days
 except Exception as e:
     print(f"Error parsing configuration values: {str(e)}")
     raise
@@ -141,63 +149,138 @@ def verify_zip_content(zip_data):
     except Exception as e:
         return False
 
-def backup_folder(main_zip, folder_path, recursive):
-    """Backup a folder with verification."""
+# DIFFERENTIAL
+
+
+def get_file_hash(file_path):
+    """Calculate SHA-256 hash of a file."""
+    sha256_hash = hashlib.sha256()
+    with open(file_path, "rb") as f:
+        for byte_block in iter(lambda: f.read(4096), b""):
+            sha256_hash.update(byte_block)
+    return sha256_hash.hexdigest()
+
+def get_last_full_backup():
+    """Find the most recent full backup and its manifest."""
+    try:
+        for entry in sorted(os.listdir(backup_destination), reverse=True):
+            if entry.startswith("backup_full_"):
+                manifest_path = os.path.join(backup_destination, entry.replace('.zip', '_manifest.json'))
+                if os.path.exists(manifest_path):
+                    return entry, manifest_path
+        return None, None
+    except Exception as e:
+        log(f"Error finding last full backup: {str(e)}")
+        return None, None
+
+def should_create_full_backup():
+    """Determine if a new full backup should be created."""
+    last_full_backup, _ = get_last_full_backup()
+    if not last_full_backup:
+        return True
+        
+    last_full_time = os.path.getctime(os.path.join(backup_destination, last_full_backup))
+    days_since_full = (time.time() - last_full_time) / (24 * 3600)
+    return days_since_full >= full_backup_interval
+
+def count_files(folder_path, recursive=True):
+    """Count total files in a folder."""
+    count = 0
+    for root, _, files in os.walk(folder_path):
+        count += len(files)
+        if not recursive:
+            break
+    return count
+
+def backup_folder(main_zip, folder_path, recursive, manifest=None, base_manifest=None):
+    """Backup a folder with progress bar and optional differential backup."""
     if not os.path.exists(folder_path):
         log(f"Error: Folder '{folder_path}' does not exist. Skipping backup.")
-        return
+        return {}, 0
 
     try:
         log(f"Starting backup for '{folder_path}' (Recursive: {recursive})")
-
+        
+        # Count total files for progress bar
+        total_files = count_files(folder_path, recursive)
+        if total_files == 0:
+            log(f"No files found in {folder_path}")
+            return {}, 0
+            
         folder_name = os.path.basename(folder_path.strip('/\\'))
         folder_zip_filename = f"{folder_name}.zip"
-        print(f"Processing folder: {folder_name}")
+        print(f"\nProcessing folder: {folder_name}")
         
-        # First create and verify the folder zip
+        files_processed = 0
+        current_manifest = {}
+        
         with tempfile.NamedTemporaryFile(delete=False) as temp_zip:
             try:
-                # Create the folder zip directly on disk first
                 with zipfile.ZipFile(temp_zip.name, 'w', zipfile.ZIP_DEFLATED) as folder_zip:
                     # Add path.txt file containing the original path
                     folder_zip.writestr('path.txt', folder_path)
                     
-                    for root, dirs, files in os.walk(folder_path):
-                        rel_path = os.path.relpath(root, folder_path)
-                        log(f"Zipping folder '{rel_path}'")
-                        
-                        for file in files:
-                            file_path = os.path.join(root, file)
-                            arcname = os.path.relpath(file_path, folder_path)
-                            try:
-                                folder_zip.write(file_path, arcname)
-                                log(f"Added '{arcname}' to zip")
-                            except Exception as e:
-                                log(f"Error adding file {file_path}: {str(e)}")
-                        
-                        if not recursive:
-                            break
+                    # Create progress bar
+                    with tqdm(total=total_files, desc=f"Backing up {folder_name}", unit="files") as pbar:
+                        for root, _, files in os.walk(folder_path):
+                            rel_path = os.path.relpath(root, folder_path)
+                            
+                            for file in files:
+                                file_path = os.path.join(root, file)
+                                arcname = os.path.relpath(file_path, folder_path)
+                                
+                                try:
+                                    # Calculate file hash
+                                    file_hash = get_file_hash(file_path)
+                                    file_time = os.path.getmtime(file_path)
+                                    
+                                    # For differential backup, check if file has changed
+                                    if base_manifest is not None:
+                                        base_info = base_manifest.get(arcname, {})
+                                        if (base_info.get('hash') == file_hash and 
+                                            base_info.get('time') == file_time):
+                                            pbar.update(1)
+                                            files_processed += 1
+                                            continue
+                                    
+                                    # Add file to zip
+                                    folder_zip.write(file_path, arcname)
+                                    current_manifest[arcname] = {
+                                        'hash': file_hash,
+                                        'time': file_time
+                                    }
+                                    
+                                    pbar.update(1)
+                                    files_processed += 1
+                                    
+                                except Exception as e:
+                                    log(f"Error adding file {file_path}: {str(e)}")
+                            
+                            if not recursive:
+                                break
                 
-                # Verify the created zip file
+                # Verify and add to main zip
                 with open(temp_zip.name, 'rb') as f:
                     zip_data = f.read()
                     if not verify_zip_content(zip_data):
                         raise Exception("Created zip file verification failed")
                     
-                    # Add the verified zip to the main backup
-                    main_zip.writestr(folder_zip_filename, zip_data)
-                    log(f"Added verified '{folder_zip_filename}' to main backup")
+                    if files_processed > 0:  # Only add if files were actually backed up
+                        main_zip.writestr(folder_zip_filename, zip_data)
+                        log(f"Added verified '{folder_zip_filename}' to main backup")
             
             finally:
-                # Clean up the temporary file
                 try:
                     os.unlink(temp_zip.name)
                 except Exception as e:
                     log(f"Warning: Could not delete temporary file {temp_zip.name}: {str(e)}")
-
+                    
+        return current_manifest, files_processed
+    
     except Exception as e:
         print(f"Error backing up '{folder_path}': {str(e)}")
         log(f"Error backing up '{folder_path}': {str(e)}")
+        return {}, 0
 
 def fix_bad_zipfile(zip_path):
     """Try to fix a corrupted zip file."""
@@ -345,18 +428,60 @@ def restore_backup(backup_name, selected_folders=None):
         raise
     
 def execute_backup():
+    """Execute the backup operation with progress bars and differential backup support."""
+    # Determine backup type
+    is_full_backup = backup_type == 'full' or should_create_full_backup()
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    backup_session_name = f"backup_{timestamp}.zip"
+    
+    # Set backup name based on type
+    backup_prefix = "backup_full_" if is_full_backup else "backup_diff_"
+    backup_session_name = f"{backup_prefix}{timestamp}.zip"
     backup_session_path = os.path.join(backup_destination, backup_session_name)
     
+    # Load base manifest for differential backup
+    base_manifest = None
+    if not is_full_backup:
+        last_full_backup, manifest_path = get_last_full_backup()
+        if manifest_path and os.path.exists(manifest_path):
+            try:
+                with open(manifest_path, 'r') as f:
+                    base_manifest = json.load(f)
+            except Exception as e:
+                log(f"Error loading base manifest, falling back to full backup: {str(e)}")
+                is_full_backup = True
+    
     folders_to_backup = read_folders()
-    print("\nStarting backup operation...")
+    backup_type_str = "FULL" if is_full_backup else "DIFFERENTIAL"
+    print(f"\nStarting {backup_type_str} backup operation...")
     
     try:
-        # Create the main backup zip
+        complete_manifest = {}
+        total_files_processed = 0
+        
         with zipfile.ZipFile(backup_session_path, 'w', zipfile.ZIP_DEFLATED) as main_zip:
             for folder_path, is_recursive in folders_to_backup:
-                backup_folder(main_zip, folder_path, is_recursive)
+                folder_manifest, files_processed = backup_folder(
+                    main_zip, 
+                    folder_path, 
+                    is_recursive,
+                    complete_manifest,
+                    base_manifest
+                )
+                complete_manifest.update(folder_manifest)
+                total_files_processed += files_processed
+        
+        # Save manifest for this backup
+        manifest_path = backup_session_path.replace('.zip', '_manifest.json')
+        with open(manifest_path, 'w') as f:
+            json.dump(complete_manifest, f)
+        
+        # If no files were processed in differential backup, clean up
+        if not is_full_backup and total_files_processed == 0:
+            os.remove(backup_session_path)
+            os.remove(manifest_path)
+            log("No changes detected, differential backup not needed")
+            print("No changes detected since last backup")
+            return
         
         # Verify the final backup
         log("Verifying final backup...")
@@ -374,8 +499,8 @@ def execute_backup():
             raise
         
         enforce_backup_limit()
-        log("Backup operation completed successfully")
-        print("Backup operation completed. Check the log for details.")
+        log(f"{backup_type_str} backup operation completed successfully")
+        print(f"{backup_type_str} backup completed. {total_files_processed} files processed.")
     
     except Exception as e:
         error_msg = f"Critical error during backup operation: {str(e)}"
@@ -388,7 +513,7 @@ def execute_backup():
             except Exception as cleanup_error:
                 log(f"Could not remove failed backup: {str(cleanup_error)}")
         raise
-
+    
 def main():
     parser = argparse.ArgumentParser(description='Backup and restore utility')
     parser.add_argument('action', choices=['backup', 'restore', 'list'], help='Action to perform: backup, restore, or list backups')

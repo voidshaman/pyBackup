@@ -1,0 +1,6 @@
+# Core packages for backup functionality
+configparser>=5.3.0
+tqdm>=4.66.1
+
+# Note: Other imports used in the script (os, shutil, zipfile, io, tempfile, datetime, argparse, json, hashlib, pathlib, time)
+# are part of Python's standard library and don't need to be included in requirements
