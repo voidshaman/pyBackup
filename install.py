@@ -15,7 +15,7 @@ REQUIRED_PACKAGES = [
 
 # URLs and paths
 BACKUP_SCRIPT_URL = "https://raw.githubusercontent.com/voidshaman/pyBackup/refs/heads/main/backup_service.py"
-CONFIG_FILE_URL = "https://raw.githubusercontent.com/voidshaman/pyBackup/refs/heads/main/conf.cfg"
+CONFIG_FILE_URL = "https://raw.githubusercontent.com/voidshaman/pyBackup/refs/heads/main/conf/conf.cfg"
 INSTALL_DIR = "C:/pyBackup"
 CONF_DIR = os.path.join(INSTALL_DIR, "conf")
 BACKUP_SCRIPT_PATH = os.path.join(INSTALL_DIR, "backup_service.py")
